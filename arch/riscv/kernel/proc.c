@@ -1,6 +1,7 @@
 #include "proc.h"
 #include "vm.h"
 #include "types.h"
+#include "elf.h"
 extern void _dummy();
 extern void _switch_to(struct task_struct *prev, struct task_struct *next);
 extern uint64 task_test_priority[];
@@ -41,31 +42,10 @@ void task_init()
         task[i]->counter = task_test_counter[i];
         task[i]->priority = task_test_priority[i];
         task[i]->pid = i;
-        // task[i]->kernel_sp = (uint64)(task[i])+PGSIZE;
-        // task[i]->user_sp = alloc_page();
         task[i]->thread.ra = (uint64)&_dummy;
         task[i]->thread.sp = (uint64)(task[i]) + PGSIZE;
-        uint64* pgtbl = (uint64 *)alloc_page();
-        memcpy(pgtbl, swapper_pg_dir, PGSIZE);
-        // uint64 va = USER_START;
-        // uint64 pa = (uint64)(uapp_start)-PA2VA_OFFSET;
-        // // printk("va:%lx pa:%lx\n",va,pa);
-        // create_mapping(pgtbl, va, pa, (uint64)(uapp_end)-(uint64)(uapp_start), 31);
-        // va = USER_END-PGSIZE;
-        // pa = task[i]->user_sp-PA2VA_OFFSET;
-        // create_mapping(pgtbl, va, pa, PGSIZE, 23);
-        // uint64 satp = csr_read(satp);
-        // satp = (satp >> 44) << 44;
-        // satp = satp|(((uint64)pgtbl-PA2VA_OFFSET) >> 12);
-        task[i]->satp = (uint64*)satp;
-        // printk("%d satp:%lx\n",i,satp);
-        // task[i]->thread.sepc = USER_START;
-        // uint64 sstatus = csr_read(sstatus);
-        // sstatus = sstatus&(~(1<<8)); // set sstatus[SPP] = 0
-        // sstatus = sstatus|(1<<5); // set sstatus[SPIE] = 1
-        // sstatus = sstatus|(1<<18); // set sstatus[SUM] = 1
-        // task[i]->thread.sstatus = sstatus;
-        // task[i]->thread.sscratch = USER_END;
+        //load_bin(task[i]);
+        load_program(task[i]);
     }
     printk("...proc_init done!\n");
 }
@@ -202,25 +182,75 @@ static uint64_t load_program(struct task_struct* task) {
   
     Elf64_Phdr* phdr;
     int load_phdr_cnt = 0;
+    uint64* pgtbl = (uint64 *)alloc_page();
+    memcpy(pgtbl, swapper_pg_dir, PGSIZE);
+    uint64 va,pa;
     for (int i = 0; i < phdr_cnt; i++) {
         phdr = (Elf64_Phdr*)(phdr_start + sizeof(Elf64_Phdr) * i);
         if (phdr->p_type == PT_LOAD) {
-            // alloc space and copy content
-          	// do mapping
-          	// code...
+        // 计算所需页面数量并分配空间
+        uint64 phdr_num = PGROUNDUP((uint64)phdr->p_memsz + phdr->p_vaddr - PGROUNDDOWN(phdr->p_vaddr)) / PGSIZE;
+        uint64 *phdr_temp = (uint64 *)alloc_pages(phdr_num);
+        //从elf文件拷贝大小为p_filesz的内容
+        memcpy((void *)((uint64)phdr_temp + phdr->p_vaddr - PGROUNDDOWN(phdr->p_vaddr)), 
+        (void*)((uint64)&uapp_start + (uint64)phdr->p_offset), (uint64)phdr->p_filesz);
+        //将 [p_vaddr + p_filesz, p_vaddr + p_memsz)对应的物理区间清零
+         memset((void *)((uint64)phdr_temp + phdr->p_vaddr - PGROUNDDOWN(phdr->p_vaddr)+(uint64)phdr->p_filesz), 
+        0, (uint64)phdr->p_memsz-(uint64)phdr->p_filesz);
+         // do mapping
+        va = (uint64)PGROUNDDOWN(phdr->p_vaddr);
+        pa = (uint64)phdr_temp-PA2VA_OFFSET;
+        create_mapping(pgtbl, va, pa, phdr_num*PGSIZE, (phdr->p_flags << 1) | 17);
         }
     }
   
     // allocate user stack and do mapping
     // code...
-  
     // following code has been written for you
     // set user stack
-    ...;
+    task->kernel_sp = (uint64)(task)+PGSIZE;
+    task->user_sp = alloc_page();
+    va = USER_END-PGSIZE;
+    pa = task->user_sp-PA2VA_OFFSET;
+    create_mapping(pgtbl, va, pa, PGSIZE, 23);
+    uint64 satp = csr_read(satp);
+    satp = (satp >> 44) << 44;
+    satp = satp|(((uint64)pgtbl-PA2VA_OFFSET) >> 12);
+    task->satp = (uint64*)satp;
     // pc for the user program
     task->thread.sepc = ehdr->e_entry;
     // sstatus bits set
-    task->thread.sstatus = ...;
+    uint64 sstatus = csr_read(sstatus);
+    sstatus = sstatus&(~(1<<8)); // set sstatus[SPP] = 0
+    sstatus = sstatus|(1<<5); // set sstatus[SPIE] = 1
+    sstatus = sstatus|(1<<18); // set sstatus[SUM] = 1
+    task->thread.sstatus = sstatus;   
     // user stack for user program
-    task->thread.sscratch = ...;
+     task->thread.sscratch = USER_END;
+}
+static uint64_t load_bin(struct task_struct* task){
+            task->kernel_sp = (uint64)(task)+PGSIZE;
+        task->user_sp = alloc_page();
+        uint64* pgtbl = (uint64 *)alloc_page();
+        memcpy(pgtbl, swapper_pg_dir, PGSIZE);
+        uint64 va = USER_START;
+        uint64 pa = (uint64)(uapp_start)-PA2VA_OFFSET;
+        // printk("va:%lx pa:%lx\n",va,pa);
+        create_mapping(pgtbl, va, pa, (uint64)(uapp_end)-(uint64)(uapp_start), 31);
+        va = USER_END-PGSIZE;
+        pa = task->user_sp-PA2VA_OFFSET;
+        create_mapping(pgtbl, va, pa, PGSIZE, 23);
+        uint64 satp = csr_read(satp);
+        satp = (satp >> 44) << 44;
+        satp = satp|(((uint64)pgtbl-PA2VA_OFFSET) >> 12);
+        task->satp = (uint64*)satp;
+        // printk("%d satp:%lx\n",i,satp);
+        task->thread.sepc = USER_START;
+        uint64 sstatus = csr_read(sstatus);
+        sstatus = sstatus&(~(1<<8)); // set sstatus[SPP] = 0
+        sstatus = sstatus|(1<<5); // set sstatus[SPIE] = 1
+        sstatus = sstatus|(1<<18); // set sstatus[SUM] = 1
+        task->thread.sstatus = sstatus;
+        task->thread.sscratch = USER_END;
+
 }

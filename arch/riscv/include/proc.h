@@ -47,3 +47,6 @@ void switch_to(struct task_struct* next);
 
 /* dummy funciton: 一个循环程序, 循环输出自己的 pid 以及一个自增的局部变量 */
 void dummy();
+
+static uint64_t load_bin(struct task_struct* task);
+static uint64_t load_program(struct task_struct* task);
