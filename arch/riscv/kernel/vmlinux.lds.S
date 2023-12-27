@@ -1,4 +1,3 @@
-
 /* 目标架构 */
 OUTPUT_ARCH( "riscv" )
 
@@ -61,10 +60,10 @@ SECTIONS
 
         _edata = .;
         
-        . = ALIGN(0x1000);
-        uapp_start = .;
-        *(.uapp .uapp*)
-        uapp_end = .;
+        _sramdisk = .;
+        *(.ramdisk .ramdisk*)
+        _eramdisk = .;
+
         . = ALIGN(0x1000);
     } >ramv AT>ram
 

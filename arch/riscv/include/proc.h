@@ -5,7 +5,7 @@
 #include "printk.h"
 #include "test.h"
 #include "string.h"
-#define NR_TASKS  (1 + 4) // 用于控制 最大线程数量 （idle 线程 + 31 内核线程）
+#define NR_TASKS  (1 + 1) // 用于控制 最大线程数量 （idle 线程 + 31 内核线程）
 #define TASK_RUNNING    0 // 为了简化实验, 所有的线程都只有一种状态
 #define PRIORITY_MIN 1
 #define PRIORITY_MAX 10
@@ -31,6 +31,7 @@ struct task_struct {
     uint64 user_sp;
     struct thread_struct thread;
     uint64* satp;
+    struct file *files;
 };
 
 /* 线程初始化 创建 NR_TASKS 个线程 */

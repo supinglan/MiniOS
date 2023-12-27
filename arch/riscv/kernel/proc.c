@@ -2,6 +2,7 @@
 #include "vm.h"
 #include "types.h"
 #include "elf.h"
+#include "test.h"
 extern void _dummy();
 extern void _switch_to(struct task_struct *prev, struct task_struct *next);
 extern uint64 task_test_priority[];
@@ -9,12 +10,11 @@ extern uint64 task_test_counter[];
 struct task_struct *idle;           // idle process
 struct task_struct *current;        // 指向当前运行线程的 `task_struct`
 struct task_struct *task[NR_TASKS]; // 线程数组, 所有的线程都保存在此
-extern char uapp_start[];
-extern char uapp_end[];
+extern char _sramdisk[];
+extern char _eramdisk[];
 extern uint64  swapper_pg_dir[512] __attribute__((__aligned__(0x1000)));
 void task_init()
 {
-    test_init(NR_TASKS);
     // 1. 调用 kalloc() 为 idle 分配一个物理页
     // 2. 设置 state 为 TASK_RUNNING;
     // 3. 由于 idle 不参与调度 可以将其 counter / priority 设置为 0
@@ -44,6 +44,7 @@ void task_init()
         task[i]->pid = i;
         task[i]->thread.ra = (uint64)&_dummy;
         task[i]->thread.sp = (uint64)(task[i]) + PGSIZE;
+        task[i]->files = file_init();
         //load_bin(task[i]);
         load_program(task[i]);
     }
@@ -52,7 +53,6 @@ void task_init()
 
 void dummy()
 {
-    schedule_test();
     uint64 MOD = 1000000007;
     uint64 auto_inc_local_var = 0;
     int last_counter = -1;
@@ -175,7 +175,7 @@ void schedule()
 #endif
 
 static uint64_t load_program(struct task_struct* task) {
-    Elf64_Ehdr* ehdr = (Elf64_Ehdr*)uapp_start;
+    Elf64_Ehdr* ehdr = (Elf64_Ehdr*)_sramdisk;
 
     uint64_t phdr_start = (uint64_t)ehdr + ehdr->e_phoff;
     int phdr_cnt = ehdr->e_phnum;
@@ -193,7 +193,7 @@ static uint64_t load_program(struct task_struct* task) {
         uint64 *phdr_temp = (uint64 *)alloc_pages(phdr_num);
         //从elf文件拷贝大小为p_filesz的内容
         memcpy((void *)((uint64)phdr_temp + phdr->p_vaddr - PGROUNDDOWN(phdr->p_vaddr)), 
-        (void*)((uint64)&uapp_start + (uint64)phdr->p_offset), (uint64)phdr->p_filesz);
+        (void*)((uint64)&_sramdisk + (uint64)phdr->p_offset), (uint64)phdr->p_filesz);
         //将 [p_vaddr + p_filesz, p_vaddr + p_memsz)对应的物理区间清零
          memset((void *)((uint64)phdr_temp + phdr->p_vaddr - PGROUNDDOWN(phdr->p_vaddr)+(uint64)phdr->p_filesz), 
         0, (uint64)phdr->p_memsz-(uint64)phdr->p_filesz);
@@ -234,9 +234,9 @@ static uint64_t load_bin(struct task_struct* task){
         uint64* pgtbl = (uint64 *)alloc_page();
         memcpy(pgtbl, swapper_pg_dir, PGSIZE);
         uint64 va = USER_START;
-        uint64 pa = (uint64)(uapp_start)-PA2VA_OFFSET;
+        uint64 pa = (uint64)(_sramdisk)-PA2VA_OFFSET;
         // printk("va:%lx pa:%lx\n",va,pa);
-        create_mapping(pgtbl, va, pa, (uint64)(uapp_end)-(uint64)(uapp_start), 31);
+        create_mapping(pgtbl, va, pa, (uint64)(_eramdisk)-(uint64)(_sramdisk), 31);
         va = USER_END-PGSIZE;
         pa = task->user_sp-PA2VA_OFFSET;
         create_mapping(pgtbl, va, pa, PGSIZE, 23);

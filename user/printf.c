@@ -8,7 +8,7 @@ void putc(char c) {
     buffer[tail++] = (char)c;
 }
 
-static int vprintfmt(void(*putch)(char), const char *fmt, va_list vl) {
+static int vprintfmt(void(*putch)(char), int fd, const char *fmt, va_list vl) {
     int in_format = 0, longarg = 0;
     size_t pos = 0;
     for( ; *fmt; fmt++) {
@@ -106,7 +106,7 @@ static int vprintfmt(void(*putch)(char), const char *fmt, va_list vl) {
         }
     }
 
-    long syscall_ret, fd = 1;
+    long syscall_ret;
     buffer[tail++] = '\0';
     asm volatile ("li a7, %1\n"
                   "mv a0, %2\n"
@@ -124,7 +124,7 @@ int printf(const char* s, ...) {
     va_list vl;
     va_start(vl, s);
     tail = 0;
-    res = vprintfmt(putc, s, vl);
+    res = vprintfmt(putc, 1, s, vl);
     va_end(vl);
     return res;
 }
