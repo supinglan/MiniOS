@@ -3,6 +3,9 @@
 #include "types.h"
 #include "elf.h"
 #include "test.h"
+#include "virtio.h"
+#include "mbr.h"
+#include "fs.h"
 extern void _dummy();
 extern void _switch_to(struct task_struct *prev, struct task_struct *next);
 extern uint64 task_test_priority[];
@@ -49,6 +52,8 @@ void task_init()
         load_program(task[i]);
     }
     printk("...proc_init done!\n");
+    virtio_dev_init();
+    // mbr_init();
 }
 
 void dummy()
@@ -102,7 +107,7 @@ void do_timer(void)
     // 2. 如果当前线程不是 idle 对当前线程的运行剩余时间减1 若剩余时间仍然大于0 则直接返回 否则进行调度
     else
     {
-        current->counter--;
+        // current->counter--;
         if (current->counter <= 0)
             schedule();
         else
@@ -203,7 +208,6 @@ static uint64_t load_program(struct task_struct* task) {
         create_mapping(pgtbl, va, pa, phdr_num*PGSIZE, (phdr->p_flags << 1) | 17);
         }
     }
-  
     // allocate user stack and do mapping
     // code...
     // following code has been written for you

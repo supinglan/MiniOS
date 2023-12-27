@@ -33,7 +33,7 @@ int64_t read(int fd, void *buf, uint64_t count) {
     return syscall_ret;   
 }
 
-int64_t sys_openat(int dfd, char *filename, int flags) {
+int64_t system_openat(int dfd, char *filename, int flags) {
     long syscall_ret;
     asm volatile ("li a7, %1\n"
                   "mv a0, %2\n"
@@ -47,7 +47,7 @@ int64_t sys_openat(int dfd, char *filename, int flags) {
 }
 
 int64_t open(char *filename, int flags) {
-    return sys_openat(AT_FDCWD, filename, flags);
+    return system_openat(AT_FDCWD, filename, flags);
 }
 
 int close(int fd) {

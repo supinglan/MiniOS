@@ -4,6 +4,7 @@
 #include "mm.h"
 #include "string.h"
 #include "printk.h"
+#include "virtio.h"
 
 /* early_pgtbl: 用于 setup_vm 进行 1GB 的 映射。 */
 unsigned long  early_pgtbl[512] __attribute__((__aligned__(0x1000)));
@@ -60,9 +61,10 @@ void setup_vm_final(void) {
     create_mapping(swapper_pg_dir,va,pa,size,7);
     printk("mapping other memory !\n");
 
-    // set satp with swapper_pg_dir
+     create_mapping(swapper_pg_dir, io_to_virt(VIRTIO_START), VIRTIO_START, VIRTIO_SIZE * VIRTIO_COUNT, 7);
 
-    // YOUR CODE HERE
+
+    // set satp with swapper_pg_dir
     asm volatile (
         "addi t0, x0, 8\n"
         "slli t0, t0, 60\n"

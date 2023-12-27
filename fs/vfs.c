@@ -91,29 +91,3 @@ uint32_t get_fs_type(const char* filename) {
     }
     return ret;
 }
-
-void file_open(struct file* file, const char* path, int flags) {
-    file->opened = 1;
-    file->perms = flags;
-    file->cfo = 0;
-    file->fs_type = get_fs_type(path);
-    memcpy(file->path, path, strlen(path) + 1);
-
-    if (file->fs_type == FS_TYPE_FAT32) {
-        file->lseek = fat32_lseek;
-        file->write = fat32_write;
-        file->read = fat32_read;
-        file->fat32_file = fat32_open_file(path);
-    } else if (file->fs_type == FS_TYPE_EXT2) {
-        // file->lseek = ext2_lseek;
-        printk("Unsupport ext2\n");
-        while (1);
-        // file->write = ext2_write;
-        // file->read = ext2_read;
-    } else {
-        printk("Unknown fs type: %s\n", path);
-        while (1);
-    }
-    // file->cfo = fat32_open(filename, flags);
-    // memcpy(file->path, filename);
-}

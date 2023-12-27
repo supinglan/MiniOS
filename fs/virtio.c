@@ -194,7 +194,7 @@ int virtio_dev_test(uint64_t virtio_addr) {
 
     struct virtio_regs *virtio_header = virtio_space;
     if (in32(&virtio_header->DeviceID) == ID_VIRTIO_BLK) {
-        // printk("[S] virtio_blk found!\n");
+        printk("[S] virtio_blk found!\n");
         virtio_blk_regs = virtio_space;
     }
 

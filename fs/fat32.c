@@ -26,10 +26,10 @@ uint32_t next_cluster(uint64_t cluster) {
 
 void fat32_init(uint64_t lba, uint64_t size) {
     virtio_blk_read_sector(lba, (void*)&fat32_header);
-    fat32_volume.first_fat_sec = 0/* to calculate */;
-    fat32_volume.sec_per_cluster = 0/* to calculate */;
-    fat32_volume.first_data_sec = 0/* to calculate */;
-    fat32_volume.fat_sz = 0/* to calculate */;
+    fat32_volume.first_fat_sec = lba + fat32_header.rsvd_sec_cnt;
+    fat32_volume.sec_per_cluster = fat32_header.sec_per_clus;
+    fat32_volume.first_data_sec = fat32_volume.first_fat_sec + fat32_header.num_fats * fat32_header.fat_sz16;
+    fat32_volume.fat_sz = fat32_header.fat_sz16;
 
     virtio_blk_read_sector(fat32_volume.first_data_sec, fat32_buf); // Get the root directory
     struct fat32_dir_entry *dir_entry = (struct fat32_dir_entry *)fat32_buf;
@@ -65,17 +65,39 @@ void to_upper_case(char *str) {
 struct fat32_file fat32_open_file(const char *path) {
     struct fat32_file file;
     /* todo: open the file according to path */
+    to_upper_case(path);
+    uint32_t cluster = 0;
+    uint32_t sector = fat32_volume.first_data_sec;
+    uint32_t dir_index = 0;
+    while (1) {
+        virtio_blk_read_sector(sector, fat32_buf);
+        struct fat32_dir_entry *dir_entry = (struct fat32_dir_entry *)fat32_buf;
+        for (int i = 0; i < FAT32_ENTRY_PER_SECTOR; i++) {
+            if (memcmp(path, dir_entry[i].name, 11) == 0) {
+                file.dir.cluster = cluster;
+                file.dir.index = dir_index;
+                file.cluster = dir_entry[i].starthi << 16 | dir_entry[i].startlow;
+                return file;
+            }
+            dir_index++;
+        }
+        cluster = next_cluster(cluster);
+        if (cluster >= 0x0ffffff8) {
+            return file;
+        }
+        sector = cluster_to_sector(cluster);
+    }
     return file;
 }
 
 int64_t fat32_lseek(struct file* file, int64_t offset, uint64_t whence) {
     if (whence == SEEK_SET) {
-        file->cfo = 0/* to calculate */;
+        file->cfo = offset;
     } else if (whence == SEEK_CUR) {
-        file->cfo = 0/* to calculate */;
+        file->cfo = file->cfo + offset;
     } else if (whence == SEEK_END) {
         /* Calculate file length */
-        file->cfo = 0/* to calculate */;
+        file->cfo = file->fat32_file.dir.index * sizeof(struct fat32_dir_entry) + file->fat32_file.dir.cluster * fat32_volume.sec_per_cluster * VIRTIO_BLK_SECTOR_SIZE + file->fat32_file.cluster * fat32_volume.sec_per_cluster * VIRTIO_BLK_SECTOR_SIZE;
     } else {
         printk("fat32_lseek: whence not implemented\n");
         while (1);
@@ -136,7 +158,36 @@ int64_t fat32_extend_filesz(struct file* file, uint64_t new_size) {
 }
 
 int64_t fat32_read(struct file* file, void* buf, uint64_t len) {
-    return 0;
+    uint64_t sector = cluster_to_sector(file->fat32_file.cluster) + file->fat32_file.dir.index / FAT32_ENTRY_PER_SECTOR;
+    virtio_blk_read_sector(sector, fat32_table_buf);
+    uint32_t index = file->fat32_file.dir.index % FAT32_ENTRY_PER_SECTOR;
+    uint32_t file_len = ((struct fat32_dir_entry *)fat32_table_buf)[index].size;
+    if (file->cfo + len > file_len) {
+        len = file_len - file->cfo;
+    }
+    uint64_t start_sector = cluster_to_sector(file->fat32_file.cluster) + file->cfo / VIRTIO_BLK_SECTOR_SIZE;
+    uint64_t end_sector = cluster_to_sector(file->fat32_file.cluster) + (file->cfo + len) / VIRTIO_BLK_SECTOR_SIZE;
+    uint64_t start_offset = file->cfo % VIRTIO_BLK_SECTOR_SIZE;
+    uint64_t end_offset = (file->cfo + len) % VIRTIO_BLK_SECTOR_SIZE;
+    uint64_t read_len = 0;
+    for (uint64_t i = start_sector; i <= end_sector; i++) {
+        virtio_blk_read_sector(i, fat32_buf);
+        if (i == start_sector && i == end_sector) {
+            memcpy(buf, fat32_buf + start_offset, len);
+            read_len += len;
+        } else if (i == start_sector) {
+            memcpy(buf, fat32_buf + start_offset, VIRTIO_BLK_SECTOR_SIZE - start_offset);
+            read_len += VIRTIO_BLK_SECTOR_SIZE - start_offset;
+        } else if (i == end_sector) {
+            memcpy(buf + read_len, fat32_buf, end_offset);
+            read_len += end_offset;
+        } else {
+            memcpy(buf + read_len, fat32_buf, VIRTIO_BLK_SECTOR_SIZE);
+            read_len += VIRTIO_BLK_SECTOR_SIZE;
+        }
+    }
+    file->cfo += read_len;
+    return read_len;
     /* todo: read content to buf, and return read length */
 }
 
