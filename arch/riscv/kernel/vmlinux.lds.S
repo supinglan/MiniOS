@@ -59,6 +59,7 @@ SECTIONS
         *(.data .data.*)
 
         _edata = .;
+        . = ALIGN(0x1000);
         
         _sramdisk = .;
         *(.ramdisk .ramdisk*)

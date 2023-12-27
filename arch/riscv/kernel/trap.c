@@ -37,6 +37,8 @@ void trap_handler(uint64_t scause, uint64_t sepc, struct pt_regs *regs)
     else
     {
         printk("%lx\n", scause);
+        while(1)
+            ;
     }
     return;
 }
@@ -63,7 +65,12 @@ void syscall(struct pt_regs *regs)
     }
     else if (sys_call_num == SYS_WRITE)
     {
-        regs->x[0] = sys_write(regs->x[0], (const char *)(regs->x[1]), regs->x[2]);
+        regs->x[0] = sys_write(regs->x[10], (const char *)(regs->x[11]), regs->x[12]);
+        regs->sepc = regs->sepc + 4;
+    }
+        else if (sys_call_num == SYS_READ)
+    {
+        regs->x[0] = sys_read(regs->x[10], (const char *)(regs->x[11]), regs->x[12]);
         regs->sepc = regs->sepc + 4;
     }
     else if (sys_call_num == SYS_GETPID)
@@ -83,6 +90,20 @@ int64_t sys_write(unsigned int fd, const char* buf, uint64_t count) {
     if (target_file->opened) {
         target_file->write(target_file, buf, count);
     } else {
+        printk("file not open\n");
+        ret = ERROR_FILE_NOT_OPEN;
+    }
+    return ret;
+}
+int64_t sys_read(unsigned int fd, char* buf, uint64_t count) {
+    int64_t ret;
+    struct file* target_file = &(current->files[fd]);
+    if (target_file->opened)
+    {
+        target_file->read(target_file, buf, count);
+    }
+    else
+    {
         printk("file not open\n");
         ret = ERROR_FILE_NOT_OPEN;
     }

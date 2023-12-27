@@ -15,6 +15,7 @@ typedef unsigned long uint64_t;
 typedef unsigned long uint64;
 
 int64_t sys_write(unsigned int fd, const char* buf, uint64_t count);
+int64_t sys_read(unsigned int fd, char *buf, uint64_t count);
 
 uint64_t sys_getpid();
 
